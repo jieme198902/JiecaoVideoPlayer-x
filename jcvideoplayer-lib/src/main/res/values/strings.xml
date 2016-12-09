@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">JiecaoVideoPlayer</string>
+    <string name="play_error">视频出错，请刷新重试!</string>
+</resources>
