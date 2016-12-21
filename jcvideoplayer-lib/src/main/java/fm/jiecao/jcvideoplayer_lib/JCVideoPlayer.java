@@ -157,6 +157,9 @@ public class JCVideoPlayer extends FrameLayout implements View.OnClickListener, 
 
         if (JCMediaManager.intance().listener == this) {
             JCMediaManager.intance().mediaPlayer.stop();
+            if (null != customJCVideoPlayerListener) {
+                customJCVideoPlayerListener.stop();
+            }
         }
 
     }
@@ -265,7 +268,9 @@ public class JCVideoPlayer extends FrameLayout implements View.OnClickListener, 
 
                 JCMediaManager.intance().mediaPlayer.pause();
                 Log.i("JCVideoPlayer", "pause video");
-
+                if (null != customJCVideoPlayerListener) {
+                    customJCVideoPlayerListener.pause();
+                }
                 setKeepScreenOn(false);
                 cancelDismissControlViewTimer();
 
@@ -301,6 +306,9 @@ public class JCVideoPlayer extends FrameLayout implements View.OnClickListener, 
                 quitFullScreen();
             } else {
                 JCMediaManager.intance().mediaPlayer.pause();
+                if (null != customJCVideoPlayerListener) {
+                    customJCVideoPlayerListener.pause();
+                }
                 JCMediaManager.intance().mediaPlayer.setDisplay(null);
                 JCMediaManager.intance().lastListener = this;
                 JCMediaManager.intance().listener = null;
@@ -774,11 +782,33 @@ public class JCVideoPlayer extends FrameLayout implements View.OnClickListener, 
         JCFullScreenActivity.toActivity(context, url, title);
     }
 
+    private CustomJCVideoPlayerListener customJCVideoPlayerListener;
+
+    public void setCustomJCVideoPlayerListener(CustomJCVideoPlayerListener customJCVideoPlayerListener) {
+        this.customJCVideoPlayerListener = customJCVideoPlayerListener;
+    }
+
+    /**
+     * 2016-12-21
+     * 添加自定义的播放监听
+     */
+    public interface CustomJCVideoPlayerListener {
+
+        void start();
+
+        void pause();
+
+        void stop();
+    }
+
     @Override
     public void onPrepared() {
         if (CURRENT_STATE != CURRENT_STATE_PREPAREING) return;
         JCMediaManager.intance().mediaPlayer.setDisplay(surfaceHolder);
         JCMediaManager.intance().mediaPlayer.start();
+        if (null != customJCVideoPlayerListener) {
+            customJCVideoPlayerListener.start();
+        }
         CURRENT_STATE = CURRENT_STATE_PLAYING;
 
         changeUiToShowUiPlaying();
