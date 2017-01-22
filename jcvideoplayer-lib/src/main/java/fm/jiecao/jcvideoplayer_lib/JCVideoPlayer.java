@@ -1,7 +1,14 @@
 package fm.jiecao.jcvideoplayer_lib;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.Uri;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -77,6 +84,13 @@ public class JCVideoPlayer extends FrameLayout implements View.OnClickListener, 
     private static ImageView.ScaleType speScalType = null;
 
     private static JCBuriedPoint JC_BURIED_POINT;
+
+    private String wifiTip = "确定在非wifi的情况下播放该视频吗？";//如果需要检测网络的情况的提示语
+    private boolean needCheckWifi = true;//是否需要判断wifi
+
+    public void setNeedCheckWifi(boolean needCheckWifi) {
+        this.needCheckWifi = needCheckWifi;
+    }
 
     public JCVideoPlayer(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -216,90 +230,132 @@ public class JCVideoPlayer extends FrameLayout implements View.OnClickListener, 
         }
     }
 
+    private boolean isWifi(Context mContext) {
+        ConnectivityManager connectivityManager = (ConnectivityManager) mContext
+                .getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetInfo = connectivityManager.getActiveNetworkInfo();
+        if (activeNetInfo != null
+                && activeNetInfo.getType() == ConnectivityManager.TYPE_WIFI) {
+            return true;
+        }
+        return false;
+    }
+
+
+    public void setWifiTip(String wifiTip) {
+        this.wifiTip = wifiTip;
+    }
+
+    /**
+     * 在源代码中摘出来的代码。放在这里单独执行，逻辑不修改。
+     *
+     * @param i
+     */
+    private void takePlayFromOriginCode(int i) {
+        if (i == R.id.thumb) {
+            if (CURRENT_STATE != CURRENT_STATE_NORMAL) {
+                onClickUiToggle();
+                return;
+            }
+        }
+        if (CURRENT_STATE == CURRENT_STATE_NORMAL || CURRENT_STATE == CURRENT_STATE_ERROR) {
+            addSurfaceView();
+
+            if (JCMediaManager.intance().listener != null) {
+                JCMediaManager.intance().listener.onCompletion();
+            }
+            JCMediaManager.intance().listener = this;
+
+            JCMediaManager.intance().clearWidthAndHeight();
+            CURRENT_STATE = CURRENT_STATE_PREPAREING;
+            changeUiToShowUiPrepareing();
+            llBottomControl.setVisibility(View.INVISIBLE);
+            llTitleContainer.setVisibility(View.INVISIBLE);
+            setProgressAndTime(0, 0, 0);
+            setProgressBuffered(0);
+            JCMediaManager.intance().prepareToPlay(getContext(), url);
+            Log.i("JCVideoPlayer", "play video");
+
+            surfaceView.requestLayout();
+            setKeepScreenOn(true);
+
+            if (JC_BURIED_POINT != null && JCMediaManager.intance().listener == this) {
+                if (i == R.id.start) {
+                    JC_BURIED_POINT.POINT_START_ICON(title, url);
+                } else {
+                    JC_BURIED_POINT.POINT_START_THUMB(title, url);
+                }
+            }
+        } else if (CURRENT_STATE == CURRENT_STATE_PLAYING) {
+            CURRENT_STATE = CURRENT_STATE_PAUSE;
+
+            changeUiToShowUiPause();
+
+            JCMediaManager.intance().mediaPlayer.pause();
+            Log.i("JCVideoPlayer", "pause video");
+            if (null != customJCVideoPlayerListener) {
+                customJCVideoPlayerListener.pause();
+            }
+            setKeepScreenOn(false);
+            cancelDismissControlViewTimer();
+
+            if (JC_BURIED_POINT != null && JCMediaManager.intance().listener == this) {
+                if (ifFullScreen) {
+                    JC_BURIED_POINT.POINT_STOP_FULLSCREEN(title, url);
+                } else {
+                    JC_BURIED_POINT.POINT_STOP(title, url);
+                }
+            }
+        } else if (CURRENT_STATE == CURRENT_STATE_PAUSE) {
+            CURRENT_STATE = CURRENT_STATE_PLAYING;
+
+            changeUiToShowUiPlaying();
+            JCMediaManager.intance().mediaPlayer.start();
+            Log.i("JCVideoPlayer", "go on video");
+
+            setKeepScreenOn(true);
+            startDismissControlViewTimer();
+
+            if (JC_BURIED_POINT != null && JCMediaManager.intance().listener == this) {
+                if (ifFullScreen) {
+                    JC_BURIED_POINT.POINT_RESUME_FULLSCREEN(title, url);
+                } else {
+                    JC_BURIED_POINT.POINT_RESUME(title, url);
+                }
+            }
+        }
+    }
+
     /**
      * 目前认为详细的判断和重复的设置是有相当必要的,也可以包装成方法
      */
     @Override
     public void onClick(View v) {
-        int i = v.getId();
+        final int i = v.getId();
         if (i == R.id.start || i == R.id.thumb) {
             if (TextUtils.isEmpty(url)) {
                 Toast.makeText(getContext(), "视频地址为空", Toast.LENGTH_SHORT).show();
                 return;
             }
-            if (i == R.id.thumb) {
-                if (CURRENT_STATE != CURRENT_STATE_NORMAL) {
-                    onClickUiToggle();
-                    return;
-                }
+            //在这里加一部，点击开始按钮的时候，并且当前网络不是wifi的时候弹出来dialog,
+            if (i == R.id.start && needCheckWifi && !isWifi(getContext())) {
+                new AlertDialog.Builder(getContext())
+                        .setTitle("提示")
+                        .setMessage(wifiTip)
+                        .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int position) {
+                                //不管，我流量多，就是要播放
+                                takePlayFromOriginCode(i);
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .create()
+                        .show();
+            } else {
+                //现在是wifi下可以播放。
+                takePlayFromOriginCode(i);
             }
-            if (CURRENT_STATE == CURRENT_STATE_NORMAL || CURRENT_STATE == CURRENT_STATE_ERROR) {
-                addSurfaceView();
-
-                if (JCMediaManager.intance().listener != null) {
-                    JCMediaManager.intance().listener.onCompletion();
-                }
-                JCMediaManager.intance().listener = this;
-
-                JCMediaManager.intance().clearWidthAndHeight();
-                CURRENT_STATE = CURRENT_STATE_PREPAREING;
-                changeUiToShowUiPrepareing();
-                llBottomControl.setVisibility(View.INVISIBLE);
-                llTitleContainer.setVisibility(View.INVISIBLE);
-                setProgressAndTime(0, 0, 0);
-                setProgressBuffered(0);
-                JCMediaManager.intance().prepareToPlay(getContext(), url);
-                Log.i("JCVideoPlayer", "play video");
-
-                surfaceView.requestLayout();
-                setKeepScreenOn(true);
-
-                if (JC_BURIED_POINT != null && JCMediaManager.intance().listener == this) {
-                    if (i == R.id.start) {
-                        JC_BURIED_POINT.POINT_START_ICON(title, url);
-                    } else {
-                        JC_BURIED_POINT.POINT_START_THUMB(title, url);
-                    }
-                }
-            } else if (CURRENT_STATE == CURRENT_STATE_PLAYING) {
-                CURRENT_STATE = CURRENT_STATE_PAUSE;
-
-                changeUiToShowUiPause();
-
-                JCMediaManager.intance().mediaPlayer.pause();
-                Log.i("JCVideoPlayer", "pause video");
-                if (null != customJCVideoPlayerListener) {
-                    customJCVideoPlayerListener.pause();
-                }
-                setKeepScreenOn(false);
-                cancelDismissControlViewTimer();
-
-                if (JC_BURIED_POINT != null && JCMediaManager.intance().listener == this) {
-                    if (ifFullScreen) {
-                        JC_BURIED_POINT.POINT_STOP_FULLSCREEN(title, url);
-                    } else {
-                        JC_BURIED_POINT.POINT_STOP(title, url);
-                    }
-                }
-            } else if (CURRENT_STATE == CURRENT_STATE_PAUSE) {
-                CURRENT_STATE = CURRENT_STATE_PLAYING;
-
-                changeUiToShowUiPlaying();
-                JCMediaManager.intance().mediaPlayer.start();
-                Log.i("JCVideoPlayer", "go on video");
-
-                setKeepScreenOn(true);
-                startDismissControlViewTimer();
-
-                if (JC_BURIED_POINT != null && JCMediaManager.intance().listener == this) {
-                    if (ifFullScreen) {
-                        JC_BURIED_POINT.POINT_RESUME_FULLSCREEN(title, url);
-                    } else {
-                        JC_BURIED_POINT.POINT_RESUME(title, url);
-                    }
-                }
-            }
-
         } else if (i == R.id.fullscreen) {
             if (ifFullScreen) {
                 isClickFullscreen = false;
